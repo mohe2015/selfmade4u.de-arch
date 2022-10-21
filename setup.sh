@@ -213,6 +213,10 @@ version: '3'
 services:
   app:
     image: 'jc21/nginx-proxy-manager:latest'
+    networks:
+      - portainer
+      - nextcloud_default
+      - nextcloud-aio
     restart: unless-stopped
     ports:
       - '80:80'
@@ -222,8 +226,12 @@ services:
       - ./data:/data
       - ./letsencrypt:/etc/letsencrypt
 networks:
-  default:
-    name: portainer
+  portainer:
+    external: true
+  nextcloud_default:
+    external: true
+  nextcloud-aio:
+    external: true
 ```
 docker-compose up -d
 
@@ -232,7 +240,13 @@ docker-compose pull
 docker-compose up -d
 
 http://5.75.158.97:81/
+
+# https://dns.hetzner.com/settings/api-token
+# use dns challenge, select Hetzner there
+
+
 # create proxy host in webui for nginxproxymanager
+# use ip 5.75.158.97 (because it's in the host network)
 https://nginxproxymanager.selfmade4u.de/
 
 
@@ -257,13 +271,86 @@ docker-compose up -d
 
 # create proxy host https://portainer:9443/
 
-sudo docker run --rm -it ubuntu:latest
+# sudo docker run --rm -it ubuntu:latest
 
 https://github.com/nextcloud/all-in-one/blob/main/docker-compose.yml
-curl -OL https://raw.githubusercontent.com/nextcloud/all-in-one/main/docker-compose.yml
+```yaml
+version: "3.8"
+
+volumes:
+  nextcloud_aio_mastercontainer:
+    name: nextcloud_aio_mastercontainer # This line is not allowed to be changed
+
+services:
+  nextcloud:
+    image: nextcloud/all-in-one:latest # Must be changed to 'nextcloud/all-in-one:latest-arm64' when used with an arm64 CPU
+    restart: always
+    container_name: nextcloud-aio-mastercontainer # This line is not allowed to be changed
+    volumes:
+      - nextcloud_aio_mastercontainer:/mnt/docker-aio-config # This line is not allowed to be changed
+      - /var/run/docker.sock:/var/run/docker.sock:ro # May be changed on macOS, Windows or docker rootless. See the applicable documentation
+    ports:
+      - 8080:8080
+    environment: # Is needed when using any of the options below
+      - APACHE_PORT=11000 # Is needed when running behind a reverse proxy. See https://github.com/nextcloud/all-in-one/blob/main/reverse-proxy.md
+      - SKIP_DOMAIN_VALIDATION=true
+      # - APACHE_IP_BINDING=127.0.0.1 # Should be set when running behind a reverse proxy that is running on the same host. See https://github.com/nextcloud/all-in-one/blob/main/reverse-proxy.md
+      # - TALK_PORT=3478 # This allows to adjust the port that the talk container is using.
+      # - NEXTCLOUD_DATADIR=/mnt/ncdata # Allows to set the host directory for Nextcloud's datadir. See https://github.com/nextcloud/all-in-one#how-to-change-the-default-location-of-nextclouds-datadir
+      # - NEXTCLOUD_MOUNT=/mnt/ # Allows the Nextcloud container to access the chosen directory on the host. See https://github.com/nextcloud/all-in-one#how-to-allow-the-nextcloud-container-to-access-directories-on-the-host
+      # - DOCKER_SOCKET_PATH=/var/run/docker.sock # Needs to be specified if the docker socket on the host is not located in the default '/var/run/docker.sock'. Otherwise mastercontainer updates will fail.
+      # - DISABLE_BACKUP_SECTION=true # Setting this to true allows to hide the backup section in the AIO interface.
+      # - NEXTCLOUD_UPLOAD_LIMIT=10G # Can be adjusted if you need more. See https://github.com/nextcloud/all-in-one#how-to-adjust-the-upload-limit-for-nextcloud
+      # - NEXTCLOUD_MAX_TIME=3600 # Can be adjusted if you need more. See https://github.com/nextcloud/all-in-one#how-to-adjust-the-max-execution-time-for-nextcloud
+      # - TRUSTED_CACERTS_DIR=/path/to/my/cacerts # CA certificates in this directory will be trusted by the OS of the nexcloud container (Useful e.g. for LDAPS) See See https://github.com/nextcloud/all-in-one#how-to-trust-user-defiend-certification-authorities-ca
+      # - COLLABORA_SECCOMP_DISABLED=false # Setting this to true allows to disable Collabora's Seccomp feature. See https://github.com/nextcloud/all-in-one#how-to-disable-collaboras-seccomp-feature
+
+  # # Optional: Caddy reverse proxy. See https://github.com/nextcloud/all-in-one/blob/main/reverse-proxy.md
+  # # You can find further examples here: https://github.com/nextcloud/all-in-one/discussions/588
+  # caddy:
+  #   image: caddy:alpine
+  #   restart: always
+  #   container_name: caddy
+  #   volumes:
+  #     - ./Caddyfile:/etc/caddy/Caddyfile
+  #     - ./certs:/certs
+  #     - ./config:/config
+  #     - ./data:/data
+  #     - ./sites:/srv
+  #   network_mode: "host"
+```
+# remove the 8443 and 80 expose
+# add # - APACHE_PORT=11000
+# as portainer stack
+
+# add to reverse proxy cloud.selfmade4u.de 
+
+https://5.75.158.97:8080/setup
 
 
+https://docs.gitlab.com/ee/install/docker.html#install-gitlab-using-docker-compose
 
-https://docs.gitlab.com/ee/install/docker.html
-
-
+export GITLAB_HOME=/srv/gitlab
+docker network create gitlab
+```yaml
+version: '3.6'
+services:
+  web:
+    image: 'gitlab/gitlab-ee:latest'
+    networks:
+      - gitlab
+    restart: always
+    hostname: 'gitlab.selfmade4u.de'
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'https://gitlab.selfmade4u.de'
+        # Add any other gitlab.rb configuration here, each on its own line
+    volumes:
+      - '$GITLAB_HOME/config:/etc/gitlab'
+      - '$GITLAB_HOME/logs:/var/log/gitlab'
+      - '$GITLAB_HOME/data:/var/opt/gitlab'
+    shm_size: '256m'
+networks:
+  gitlab:
+    external: true
+```
